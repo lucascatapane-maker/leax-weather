@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEAX Flight Deck - La Axarquía Weather</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Glass Cockpit Theme System */
+        :root {
+            --bg-color: #080b0e;
+            --panel-bg: rgba(18, 24, 32, 0.85);
+            --panel-border: rgba(0, 229, 255, 0.2);
+            --text-main: #f0f4f8;
+            --text-muted: #8a99ad;
+            --accent-cyan: #00e5ff;
+            --vfr-green: #00e676;
+            --mvfr-blue: #29b6f6;
+            --ifr-red: #ff1744;
+            --warn-amber: #ff9100;
+            --card-radius: 12px;
+            --input-bg: rgba(0, 0, 0, 0.35);
+            --font-mono: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #e2e8f0;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --panel-border: rgba(2, 132, 199, 0.25);
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --accent-cyan: #0284c7;
+            --vfr-green: #059669;
+            --mvfr-blue: #0284c7;
+            --ifr-red: #dc2626;
+            --warn-amber: #d97706;
+            --input-bg: rgba(255, 255, 255, 0.6);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+        }
+
+        /* iPad / Touch Friendly Controls */
+        button, select, input {
+            font-size: 16px !important;
+            touch-action: manipulation;
+        }
+
+        .glass-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--card-radius);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .disclaimer-banner {
+            background: rgba(255, 145, 0, 0.12);
+            border: 1px solid var(--warn-amber);
+            border-radius: 8px;
+            color: var(--text-main);
+        }
+
+        .metar-block {
+            background: var(--input-bg);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-family: monospace;
+        }
+
+        .metar-block.vfr { border-left-color: var(--vfr-green); }
+        .metar-block.mvfr { border-left-color: var(--mvfr-blue); }
+        .metar-block.ifr { border-left-color: var(--ifr-red); }
+
+        .vfr-badge {
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-weight: 800;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            background: rgba(0, 230, 118, 0.15);
+            color: var(--vfr-green);
+            border: 1px solid var(--vfr-green);
+        }
+
+        .vfr-badge.mvfr {
+            background: rgba(41, 182, 246, 0.15);
+            color: var(--mvfr-blue);
+            border-color: var(--mvfr-blue);
+        }
+
+        .vfr-badge.ifr {
+            background: rgba(255, 23, 68, 0.15);
+            color: var(--ifr-red);
+            border-color: var(--ifr-red);
+        }
+
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: var(--accent-cyan);
+        }
+        
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: var(--accent-cyan);
+        }
+    </style>
+</head>
+<body class="p-3 md:p-6 space-y-4">
+
+    <!-- 1. SAFETY DISCLAIMER (VERSION B) -->
+    <div class="disclaimer-banner p-3 flex items-start gap-3 text-xs md:text-sm">
+        <span class="text-xl leading-none">⚠️</span>
+        <div>
+            <strong>SITUATIONAL AWARENESS ONLY — NOT FOR FLIGHT PLANNING</strong><br>
+            All information provided is calculated and aggregated from open sources (Open-Meteo & VATSIM/NOAA feeds). Data may be delayed, incomplete, or inaccurate. Always consult official aviation weather sources (AEMET, official METAR/TAF/NOTAM) before flight.
+        </div>
+    </div>
+
+    <!-- 2. COCKPIT HEADER DECK (VERSION B CLOCKS & RULES + VERSION A THEME TOGGLE) -->
+    <header class="glass-card p-4 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold tracking-wider text-[var(--accent-cyan)] uppercase">LEAX Flight Deck</h1>
+            <p class="text-xs text-[var(--text-muted)] mt-0.5">La Axarquía / El Trapiche • ELEV 130 FT • RWY 12/30 (36.80°N | -4.13°W)</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 w-full lg:w-auto justify-between lg:justify-end">
+            <!-- UTC & Local Clocks -->
+            <div class="text-right">
+                <div class="text-[10px] text-[var(--text-muted)] tracking-widest uppercase">UTC TIME</div>
+                <div class="text-base font-bold font-mono" id="clock-utc">00:00:00Z</div>
+            </div>
+            <div class="text-right">
+                <div class="text-[10px] text-[var(--text-muted)] tracking-widest uppercase">LOCAL TIME</div>
+                <div class="text-base font-bold font-mono" id="clock-local">00:00:00</div>
+            </div>
+
+            <!-- Overall Category Badge -->
+            <div class="vfr-badge" id="overall-vfr">VFR</div>
+
+            <!-- Light/Dark Mode Toggle & Refresh -->
+            <div class="flex items-center gap-2">
+                <button onclick="toggleTheme()" class="px-3 py-1.5 rounded-md border border-[var(--panel-border)] text-xs font-bold hover:opacity-80 transition bg-[var(--input-bg)]">
+                    🌓 Mode
+                </button>
+                <button onclick="refreshAllData()" class="px-3 py-1.5 rounded-md border border-[var(--accent-cyan)] text-[var(--accent-cyan)] text-xs font-bold hover:bg-[var(--accent-cyan)] hover:text-black transition">
+                    ⚡ Refresh
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 3. FLIGHT HAZARD PANEL WITH INFO BUTTON (VERSION A MODAL + VERSION B DYNAMIC ALERTS) -->
+    <section class="glass-card p-4 border-l-4 border-[var(--warn-amber)]" id="warnings-card">
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-sm font-bold tracking-wider uppercase text-[var(--text-main)] flex items-center gap-2">
+                🛡️ LEAX Operational Hazards & Flight Threats
+            </h2>
+            <button onclick="document.getElementById('warning-modal').classList.remove('hidden')" class="px-2 py-0.5 rounded-full hover:bg-black/10 transition text-lg" title="Threshold Explainer">
+                ⓘ
+            </button>
+        </div>
+        <div id="warning-list" class="space-y-1.5 text-xs md:text-sm">
+            <div class="text-[var(--text-muted)] animate-pulse">Computing operational hazard parameters...</div>
+        </div>
+    </section>
+
+    <!-- 4. MAIN DASHBOARD GRID -->
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        <!-- LEFT COLUMN: LEAX SYNTHETIC WEATHER & RUNWAY VECTORS (VERSION A) -->
+        <section class="glass-card p-4 flex flex-col justify-between space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--panel-border)] pb-2">
+                <h2 class="text-sm font-bold tracking-wider uppercase text-[var(--accent-cyan)]">
+                    ⚡ LEAX Synthetic Weather
+                </h2>
+                <!-- Raw / Decoded Toggle Switch -->
+                <div class="flex items-center">
+                    <span class="text-[10px] text-[var(--text-muted)] mr-1.5 font-bold uppercase">Raw</span>
+                    <div class="relative inline-block w-9 mr-1.5 align-middle select-none">
+                        <input type="checkbox" name="toggle" id="decode-toggle" onchange="renderLeax()" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-2 appearance-none cursor-pointer transition-transform duration-200 ease-in-out z-10" style="top:2px; left:2px; border-color:var(--text-muted);"/>
+                        <label for="decode-toggle" class="toggle-label block overflow-hidden h-5 rounded-full bg-[var(--input-bg)] cursor-pointer transition-colors duration-200 ease-in-out"></label>
+                    </div>
+                    <span class="text-[10px] text-[var(--text-muted)] font-bold uppercase">Decoded</span>
+                </div>
+            </div>
+
+            <!-- METAR & TAF Output Box -->
+            <div class="bg-[var(--input-bg)] p-3 rounded-lg space-y-3">
+                <div>
+                    <span class="text-[10px] font-bold text-[var(--text-muted)] block mb-1 uppercase tracking-wider">Synthetic METAR</span>
+                    <div id="leax-metar-container" class="text-xs md:text-sm font-mono">Loading...</div>
+                </div>
+                <hr class="border-[var(--panel-border)]">
+                <div>
+                    <span class="text-[10px] font-bold text-[var(--text-muted)] block mb-1 uppercase tracking-wider">Synthetic TAF Trend</span>
+                    <div id="leax-taf-container" class="text-xs md:text-sm font-mono">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Key Flight Metrics Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">Wind Vector</div>
+                    <div class="font-bold text-sm" id="leax-wind">-- kt</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]" id="leax-gusts">Gusts: -- kt</div>
+                </div>
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">Temp / Dewpoint</div>
+                    <div class="font-bold text-sm" id="leax-temp">--°C / --°C</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]" id="leax-spread">Spread: --°C</div>
+                </div>
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">QNH Altimeter</div>
+                    <div class="font-bold text-sm" id="leax-qnh">---- hPa</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]" id="leax-inhg">--.-- inHg</div>
+                </div>
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">Density Alt</div>
+                    <div class="font-bold text-sm" id="leax-da">---- ft</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]" id="leax-pa">PA: ---- ft</div>
+                </div>
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">Est. Cloud Base</div>
+                    <div class="font-bold text-sm" id="leax-cloudbase">---- ft</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]">AGL (Uncapped)</div>
+                </div>
+                <div class="bg-[var(--input-bg)] p-2 rounded border border-white/5">
+                    <div class="text-[10px] text-[var(--text-muted)] uppercase">RWY 12 X-Wind</div>
+                    <div class="font-bold text-sm" id="leax-xwind">-- kt</div>
+                    <div class="text-[10px] text-[var(--accent-cyan)]" id="leax-headwind">HW: -- kt</div>
+                </div>
+            </div>
+
+            <!-- Runway Vectors SVG Diagrams (Version A) -->
+            <div>
+                <h3 class="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 text-center">Runway 12 / 30 Wind Components</h3>
+                <div class="flex justify-around items-center bg-[var(--input-bg)] p-3 rounded-lg" id="runway-vectors-container">
+                    <!-- SVG Visual Vectors injected here -->
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: OFFICIAL REGIONAL METARs WITH CUSTOM AIRPORT INPUT (VERSION B CORE + VERSION A FLEXIBILITY) -->
+        <section class="glass-card p-4 flex flex-col justify-between space-y-4">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--panel-border)] pb-2 gap-2">
+                <h2 class="text-sm font-bold tracking-wider uppercase text-[var(--accent-cyan)]">
+                    📡 Official Regional Observations
+                </h2>
+                <!-- Editable Airport ICAOs -->
+                <div class="flex items-center gap-1.5">
+                    <input type="text" id="icao1" value="LEMG" maxlength="4" class="w-16 bg-[var(--input-bg)] border border-[var(--panel-border)] rounded px-2 py-1 text-xs text-center uppercase font-bold text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-cyan)]">
+                    <input type="text" id="icao2" value="LEGR" maxlength="4" class="w-16 bg-[var(--input-bg)] border border-[var(--panel-border)] rounded px-2 py-1 text-xs text-center uppercase font-bold text-[var(--text-main)] focus:outline-none focus:border-[var(--accent-cyan)]">
+                    <button onclick="fetchMETARs()" class="bg-[var(--accent-cyan)] text-black px-2.5 py-1 rounded text-xs font-bold hover:opacity-90 transition">Fetch</button>
+                </div>
+            </div>
+
+            <div id="metar-container" class="space-y-3 flex-grow">
+                <div class="metar-block">Fetching airport observations...</div>
+            </div>
+
+            <p class="text-[10px] text-[var(--text-muted)] italic text-center">
+                Real-time official aviation observations provided via VATSIM Weather API (NOAA Fallback).
+            </p>
+        </section>
+
+        <!-- FULL WIDTH: WINDY INTERACTIVE MAP (VERSION A) -->
+        <section class="glass-card p-4 lg:col-span-2 space-y-2">
+            <h2 class="text-sm font-bold tracking-wider uppercase text-[var(--accent-cyan)]">
+                🗺️ Interactive Surface Wind Map
+            </h2>
+            <div class="w-full h-80 rounded-lg overflow-hidden border border-[var(--panel-border)]">
+                <iframe width="100%" height="100%" src="https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=kt&zoom=10&overlay=wind&product=ecmwf&level=surface&lat=36.8011&lon=-4.1342" frameborder="0"></iframe>
+            </div>
+        </section>
+
+        <!-- FULL WIDTH: WINDY API WEBCAMS & VISUAL MONITORING -->
+        <section class="glass-card p-4 lg:col-span-2 space-y-3">
+            <div class="flex justify-between items-center border-b border-[var(--panel-border)] pb-2">
+                <h2 class="text-sm font-bold tracking-wider uppercase text-[var(--accent-cyan)]">
+                    📷 Visual Cameras & Approach Monitoring (Windy API)
+                </h2>
+                <button onclick="loadAllWebcams()" class="px-2.5 py-1 rounded border border-[var(--panel-border)] text-xs font-bold hover:bg-[var(--input-bg)] transition">
+                    📷 Refresh Streams
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Torre del Mar / Coast -->
+                <div class="bg-[var(--input-bg)] rounded-lg overflow-hidden border border-[var(--panel-border)] flex flex-col" id="card-torre">
+                    <div class="p-2 text-xs font-bold border-b border-[var(--panel-border)] flex justify-between items-center">
+                        <span>TORRE DEL MAR (SOUTH / COAST)</span>
+                        <span class="vfr-badge" id="status-torre" style="font-size:10px; padding:2px 6px;">INIT</span>
+                    </div>
+                    <div class="h-64 bg-black relative flex items-center justify-center overflow-hidden" id="container-torre">
+                        <div class="text-xs text-[var(--text-muted)] animate-pulse">Fetching coastal feed...</div>
+                    </div>
+                    <div class="p-2 text-[10px] text-[var(--text-muted)] flex justify-between bg-black/20 border-t border-[var(--panel-border)]">
+                        <span id="update-torre">Last updated: --:--</span>
+                        <span id="status-day-torre">Status: --</span>
+                    </div>
+                </div>
+
+                <!-- La Viñuela / North -->
+                <div class="bg-[var(--input-bg)] rounded-lg overflow-hidden border border-[var(--panel-border)] flex flex-col" id="card-vinuela">
+                    <div class="p-2 text-xs font-bold border-b border-[var(--panel-border)] flex justify-between items-center">
+                        <span>LA VIÑUELA (NORTH / LAKE)</span>
+                        <span class="vfr-badge" id="status-vinuela" style="font-size:10px; padding:2px 6px;">INIT</span>
+                    </div>
+                    <div class="h-64 bg-black relative flex items-center justify-center overflow-hidden" id="container-vinuela">
+                        <div class="text-xs text-[var(--text-muted)] animate-pulse">Fetching inland feed...</div>
+                    </div>
+                    <div class="p-2 text-[10px] text-[var(--text-muted)] flex justify-between bg-black/20 border-t border-[var(--panel-border)]">
+                        <span id="update-vinuela">Last updated: --:--</span>
+                        <span id="status-day-vinuela">Status: --</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 5. WARNING THRESHOLDS INFO MODAL (VERSION A) -->
+    <div id="warning-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4 transition-opacity">
+        <div class="glass-card max-w-md w-full relative p-6 space-y-4">
+            <button onclick="document.getElementById('warning-modal').classList.add('hidden')" class="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-main)] text-xl font-bold">&times;</button>
+            <h3 class="text-lg font-bold text-[var(--accent-cyan)] border-b border-[var(--panel-border)] pb-2">
+                Operational Warning Thresholds
+            </h3>
+            <ul class="list-disc pl-5 space-y-2 text-xs md:text-sm text-[var(--text-main)]">
+                <li><strong class="text-[var(--warn-amber)]">High Temperature:</strong> 35°C or greater.</li>
+                <li><strong class="text-[var(--warn-amber)]">High Pressure Altitude:</strong> 1,000 ft or greater.</li>
+                <li><strong class="text-[var(--warn-amber)]">High Density Altitude:</strong> 1,000 ft or greater.</li>
+                <li><strong class="text-[var(--warn-amber)]">High Crosswind:</strong> 12–15 knots or greater (RWY 12/30).</li>
+                <li><strong class="text-[var(--warn-amber)]">High Gusts:</strong> Wind gusts ≥ 20–25 knots.</li>
+                <li><strong class="text-[var(--warn-amber)]">Hazardous Weather:</strong> Thunderstorms (TS), Fog (FG), Snow (SN), or Heavy Rain (+RA).</li>
+            </ul>
+            <p class="text-[10px] italic text-[var(--text-muted)]">
+                Thresholds reflect EASA/ICAO general guidelines to aid pilot situational awareness for light single-engine piston operations at non-controlled airfields.
+            </p>
+        </div>
+    </div>
+
+    <!-- APPLICATION LOGIC -->
+    <script>
+        const LEAX_LAT = 36.8011;
+        const LEAX_LON = -4.1356;
+        const LEAX_ELEV = 130;
+
+        // Windy Webcams API Key & Target Locations
+        const WINDY_API_KEY = 'ZazbdhFGsQpCOlqjFVDOrN5rN95tX3Lt';
+        const WEBCAM_LOCATIONS = {
+            torre: { lat: 36.74, lon: -4.09, name: 'Torre del Mar' },
+            vinuela: { lat: 36.88, lon: -4.13, name: 'La Viñuela' }
+        };
+
+        window.leaxData = null;
+
+        // Ticking Clocks
+        function updateClocks() {
+            const now = new Date();
+            document.getElementById('clock-utc').innerText = now.toISOString().substr(11, 8) + 'Z';
+            document.getElementById('clock-local').innerText = now.toLocaleTimeString('es-ES', { hour12: false });
+        }
+        setInterval(updateClocks, 1000);
+        updateClocks();
+
+        // Theme Toggle Logic
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            
+            const toggle = document.getElementById('decode-toggle');
+            if(toggle.checked) toggle.style.transform = "translateX(100%)";
+            else toggle.style.transform = "translateX(0)";
+        }
+
+        document.getElementById('decode-toggle').addEventListener('change', function() {
+            if(this.checked) {
+                this.style.transform = "translateX(100%)";
+                this.style.borderColor = "var(--accent-cyan)";
+            } else {
+                this.style.transform = "translateX(0)";
+                this.style.borderColor = "var(--text-muted)";
+            }
+        });
+
+        // Master Refresh Function
+        async function refreshAllData() {
+            await Promise.all([
+                fetchLEAXWeather(),
+                fetchMETARs()
+            ]);
+            loadAllWebcams();
+        }
+
+        // Fetch Open-Meteo Synthetic Weather for LEAX
+        async function fetchLEAXWeather() {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${LEAX_LAT}&longitude=${LEAX_LON}&current=temperature_2m,relative_humidity_2m,dew_point_2m,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,visibility,weather_code&hourly=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,visibility,cloud_cover&wind_speed_unit=kn&timezone=UTC`;
+
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                window.leaxData = data;
+
+                const cur = data.current;
+                const temp = cur.temperature_2m;
+                const dew = cur.dew_point_2m;
+                const windSpeed = Math.round(cur.wind_speed_10m);
+                const windDir = cur.wind_direction_10m;
+                const gusts = Math.round(cur.wind_gusts_10m);
+
+                const qnh = Math.round(cur.surface_pressure + (LEAX_ELEV / 27.8));
+                const inHg = (qnh * 0.02953).toFixed(2);
+                const pressAlt = LEAX_ELEV + (1013.25 - qnh) * 30;
+                const isaTemp = 15 - (1.98 * (LEAX_ELEV / 1000));
+                const densityAlt = Math.round(pressAlt + 120 * (temp - isaTemp));
+
+                const rwyAngle = Math.abs(windDir - 120) * (Math.PI / 180);
+                const xwind = Math.abs(Math.round(windSpeed * Math.sin(rwyAngle)));
+                const headwind = Math.round(windSpeed * Math.cos(rwyAngle));
+
+                const spread = temp - dew;
+                const cloudBase = Math.max(500, Math.round(spread * 400));
+
+                // UI Telemetry
+                document.getElementById('leax-wind').innerText = `${pad(windDir,3)}° / ${windSpeed} kt`;
+                document.getElementById('leax-gusts').innerText = `GUSTS: ${gusts} kt`;
+                document.getElementById('leax-xwind').innerText = `${xwind} kt`;
+                document.getElementById('leax-headwind').innerText = `${headwind >= 0 ? 'HW' : 'TW'}: ${Math.abs(headwind)} kt`;
+                document.getElementById('leax-temp').innerText = `${temp.toFixed(1)}°C / ${dew.toFixed(1)}°C`;
+                document.getElementById('leax-spread').innerText = `SPREAD: ${spread.toFixed(1)}°C`;
+                document.getElementById('leax-qnh').innerText = `${qnh} hPa`;
+                document.getElementById('leax-inhg').innerText = `${inHg} inHg`;
+                document.getElementById('leax-da').innerText = `${densityAlt} ft`;
+                document.getElementById('leax-pa').innerText = `PA: ${Math.round(pressAlt)} ft`;
+                document.getElementById('leax-cloudbase').innerText = `~${cloudBase} ft`;
+
+                renderLeax();
+                renderRunwayVectors(cur);
+                evaluateHazards({ windSpeed, gusts, xwind, densityAlt, temp, pressAlt, visibility: cur.visibility, cloudBase, wcode: cur.weather_code });
+
+            } catch (err) {
+                document.getElementById('leax-metar-container').innerText = "Error loading synthetic data.";
+            }
+        }
+
+        // Render Synthetic METAR & TAF (Raw vs Decoded)
+        function renderLeax() {
+            if (!window.leaxData) return;
+            const isDecoded = document.getElementById('decode-toggle').checked;
+            const cur = window.leaxData.current;
+            const hrly = window.leaxData.hourly;
+
+            if (isDecoded) {
+                document.getElementById('leax-metar-container').innerHTML = buildDecodedMETAR(cur);
+                document.getElementById('leax-taf-container').innerHTML = buildDecodedTAF(hrly);
+            } else {
+                document.getElementById('leax-metar-container').innerHTML = `<div class="whitespace-normal leading-relaxed">${generateRawMETAR(cur)}</div>`;
+                document.getElementById('leax-taf-container').innerHTML = `<div class="whitespace-pre-line leading-relaxed">${generateRawTAF(hrly)}</div>`;
+            }
+        }
+
+        function generateRawMETAR(current) {
+            const d = new Date(current.time + "Z");
+            const timeStr = `${pad(d.getUTCDate(),2)}${pad(d.getUTCHours(),2)}${pad(d.getUTCMinutes(),2)}Z`;
+            const wdir = current.wind_direction_10m === 0 ? "VRB" : pad(current.wind_direction_10m,3);
+            const wspd = Math.round(current.wind_speed_10m);
+            const wgust = Math.round(current.wind_gusts_10m);
+            
+            let windStr = wdir === "VRB" ? `VRB${pad(wspd,2)}KT` : `${wdir}${pad(wspd,2)}`;
+            if (wgust > wspd + 5) windStr += `G${pad(wgust,2)}`;
+            if (wdir !== "VRB") windStr += "KT";
+
+            let vis = Math.round(current.visibility);
+            let visStr = vis >= 9999 ? "9999" : pad(vis,4);
+
+            let cloud = current.cloud_cover <= 5 ? "CLR" : (current.cloud_cover <= 40 ? "SCT030" : "BKN030");
+            const fmtT = (v) => (v < 0 ? `M${pad(Math.abs(Math.round(v)),2)}` : pad(Math.round(v),2));
+            
+            return `AW LEAX ${timeStr} AUTO ${windStr} ${visStr} ${cloud} ${fmtT(current.temperature_2m)}/${fmtT(current.dew_point_2m)} Q${Math.round(current.surface_pressure + (LEAX_ELEV/27.8))}`;
+        }
+
+        function generateRawTAF(hourly) {
+            let taf = `AW TAF LEAX (SYNTHETIC)\nBASE : ${getTafLine(hourly, 0)}\n`;
+            [6, 12, 18].forEach(offset => {
+                if (hourly.time[offset]) {
+                    const d = new Date(hourly.time[offset] + "Z");
+                    taf += `BECMG ${pad(d.getUTCDate(),2)}${pad(d.getUTCHours(),2)}00Z: ${getTafLine(hourly, offset)}\n`;
+                }
+            });
+            return taf;
+        }
+
+        function getTafLine(hourly, i) {
+            const wdir = hourly.wind_direction_10m[i] === 0 ? "VRB" : pad(hourly.wind_direction_10m[i],3);
+            const wspd = Math.round(hourly.wind_speed_10m[i]);
+            let vis = Math.round(hourly.visibility[i]);
+            let visStr = vis >= 9999 ? "9999" : pad(vis,4);
+            let cloud = hourly.cloud_cover[i] <= 5 ? "CLR" : (hourly.cloud_cover[i] <= 50 ? "SCT030" : "BKN030");
+            return `${wdir}${pad(wspd,2)}KT ${visStr} ${cloud}`;
+        }
+
+        function buildDecodedMETAR(current) {
+            const wdir = current.wind_direction_10m === 0 ? "Variable" : `${current.wind_direction_10m}°`;
+            const wspd = Math.round(current.wind_speed_10m);
+            const wgust = Math.round(current.wind_gusts_10m);
+            const windStr = wgust > wspd + 5 ? `${wdir} @ ${wspd} kt (Gusts ${wgust} kt)` : `${wdir} @ ${wspd} kt`;
+            const qnh = Math.round(current.surface_pressure + (LEAX_ELEV/27.8));
+
+            return `
+              <div class="space-y-1 text-xs">
+                <div class="flex justify-between border-b border-[var(--panel-border)] pb-1">
+                  <span class="text-[var(--text-muted)]">Wind:</span>
+                  <span class="font-bold">${windStr}</span>
+                </div>
+                <div class="flex justify-between border-b border-[var(--panel-border)] pb-1">
+                  <span class="text-[var(--text-muted)]">Visibility:</span>
+                  <span class="font-bold">${current.visibility >= 9999 ? '10+ km' : (current.visibility/1000).toFixed(1) + ' km'}</span>
+                </div>
+                <div class="flex justify-between border-b border-[var(--panel-border)] pb-1">
+                  <span class="text-[var(--text-muted)]">Temp / Dewpoint:</span>
+                  <span class="font-bold">${Math.round(current.temperature_2m)}°C / ${Math.round(current.dew_point_2m)}°C</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-[var(--text-muted)]">Sea-Level QNH:</span>
+                  <span class="font-bold text-[var(--accent-cyan)]">Q${qnh}</span>
+                </div>
+              </div>
+            `;
+        }
+
+        function buildDecodedTAF(hourly) {
+            let html = `<div class="space-y-2 text-xs">`;
+            [0, 6, 12, 18].forEach(offset => {
+                if (!hourly.time[offset]) return;
+                const d = new Date(hourly.time[offset] + "Z");
+                const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const wdir = hourly.wind_direction_10m[offset] === 0 ? "VRB" : `${hourly.wind_direction_10m[offset]}°`;
+                const wspd = Math.round(hourly.wind_speed_10m[offset]);
+                const cloud = hourly.cloud_cover[offset] <= 5 ? "Clear" : (hourly.cloud_cover[offset] <= 50 ? "Scattered" : "Broken");
+
+                html += `
+                  <div class="border-l-2 border-[var(--accent-cyan)] pl-2">
+                    <div class="text-[var(--text-muted)] text-[10px] font-bold uppercase">${offset === 0 ? 'Current Base' : 'Trending ' + timeStr}</div>
+                    <div class="font-medium">🌬️ ${wdir} @ ${wspd}kt | ☁️ ${cloud}</div>
+                  </div>
+                `;
+            });
+            html += `</div>`;
+            return html;
+        }
+
+        // Official METAR Fetching Code (VATSIM API with NOAA Fallback & Custom Airports)
+        async function fetchMETARs() {
+            const icao1 = document.getElementById('icao1').value.trim().toUpperCase() || 'LEMG';
+            const icao2 = document.getElementById('icao2').value.trim().toUpperCase() || 'LEGR';
+            const container = document.getElementById('metar-container');
+
+            try {
+                const response = await fetch(`https://metar.vatsim.net/${icao1},${icao2}?format=json`);
+                if (!response.ok) throw new Error('VATSIM API Unreachable');
+                const data = await response.json();
+
+                container.innerHTML = '';
+                if(data.length === 0) throw new Error('No observations returned');
+
+                data.forEach(item => {
+                    const parsed = parseMETAR(item.metar);
+                    const block = document.createElement('div');
+                    block.className = `metar-block ${parsed.category.toLowerCase()}`;
+                    block.innerHTML = `
+                        <div class="flex justify-between font-bold text-xs mb-1">
+                            <span>${item.id} — ${parsed.category}</span>
+                            <span>${parsed.wind} | QNH ${parsed.qnh}</span>
+                        </div>
+                        <div class="text-xs break-all">${item.metar}</div>
+                    `;
+                    container.appendChild(block);
+                });
+
+            } catch (err) {
+                // NOAA API Fallback
+                try {
+                    const response = await fetch(`https://aviationweather.gov/api/data/metar?ids=${icao1},${icao2}&format=json`);
+                    const data = await response.json();
+                    container.innerHTML = '';
+                    data.forEach(item => {
+                        const parsed = parseMETAR(item.rawOb);
+                        container.innerHTML += `
+                            <div class="metar-block ${parsed.category.toLowerCase()}">
+                                <div class="flex justify-between font-bold text-xs mb-1">
+                                    <span>${item.icaoId} — ${parsed.category}</span>
+                                    <span>${parsed.wind}</span>
+                                </div>
+                                <div class="text-xs break-all">${item.rawOb}</div>
+                            </div>`;
+                    });
+                } catch (e) {
+                    container.innerHTML = `<div class="metar-block ifr">Unable to load METAR feeds for ${icao1} / ${icao2}.</div>`;
+                }
+            }
+        }
+
+        function parseMETAR(raw) {
+            let category = "VFR";
+            let wind = "VRB";
+            let qnh = "----";
+
+            const windMatch = raw.match(/(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT/);
+            if (windMatch) wind = `${windMatch[1]}°@${windMatch[2]}kt`;
+
+            const qnhMatch = raw.match(/Q(\d{4})/);
+            if (qnhMatch) qnh = `${qnhMatch[1]}`;
+
+            if (raw.includes("BKN01") || raw.includes("OVC01") || raw.includes("FG") || raw.includes("TS")) category = "IFR";
+            else if (raw.includes("BKN02") || raw.includes("SCT02") || raw.includes("HZ")) category = "MVFR";
+
+            return { category, wind, qnh };
+        }
+
+        // SVG Runway Wind Vector Rendering (Version A)
+        function renderRunwayVectors(current) {
+            const wdir = current.wind_direction_10m;
+            const wspd = current.wind_speed_10m;
+            const cont = document.getElementById('runway-vectors-container');
+
+            if (wspd === 0 || wdir === 0) {
+                cont.innerHTML = `<div class="text-[var(--text-muted)] italic text-xs py-2">Wind Calm - Vectors Neutral</div>`;
+                return;
+            }
+            cont.innerHTML = buildWindSvg(120, wdir, wspd) + buildWindSvg(300, wdir, wspd);
+        }
+
+        function buildWindSvg(rwyHeading, windDir, windSpd) {
+            let angleDiff = windDir - rwyHeading;
+            let arrowRot = angleDiff + 180;
+            let angleRad = Math.abs(angleDiff) * Math.PI / 180;
+            const xw = Math.abs(windSpd * Math.sin(angleRad));
+            const hw = windSpd * Math.cos(angleRad);
+
+            return `
+              <div class="flex flex-col items-center">
+                <h4 class="text-[10px] font-bold mb-1 text-[var(--text-main)]">RWY ${rwyHeading/10}</h4>
+                <svg viewBox="-50 -50 100 100" class="w-20 h-20 bg-[var(--bg-color)] rounded-full border border-[var(--panel-border)]">
+                    <circle cx="0" cy="0" r="48" fill="none" stroke="var(--text-muted)" stroke-width="0.5" stroke-dasharray="2 2"/>
+                    <rect x="-5" y="-32" width="10" height="64" fill="var(--text-muted)" rx="2"/>
+                    <line x1="0" y1="-28" x2="0" y2="28" stroke="var(--bg-color)" stroke-width="1.5" stroke-dasharray="3"/>
+                    <g transform="rotate(${arrowRot})">
+                        <line x1="0" y1="18" x2="0" y2="44" stroke="var(--accent-cyan)" stroke-width="3.5"/>
+                        <polygon points="-4,18 4,18 0,8" fill="var(--accent-cyan)"/>
+                    </g>
+                </svg>
+                <div class="text-[10px] font-mono mt-1 text-center">
+                    <div class="${xw >= 12 ? 'text-[var(--warn-amber)] font-bold' : ''}">XW: ${Math.round(xw)}kt</div>
+                    <div class="${hw < 0 ? 'text-[var(--warn-amber)]' : 'text-[var(--vfr-green)]'}">
+                        ${hw >= 0 ? 'HW' : 'TW'}: ${Math.round(Math.abs(hw))}kt
+                    </div>
+                </div>
+              </div>
+            `;
+        }
+
+        // Operational Hazard Evaluation Logic
+        function evaluateHazards(data) {
+            const card = document.getElementById('warnings-card');
+            const list = document.getElementById('warning-list');
+            const badge = document.getElementById('overall-vfr');
+
+            const threats = [];
+
+            if (data.xwind >= 12) threats.push(`⚠️ <strong>High Crosswind:</strong> Crosswind component is ${data.xwind} kt (Limit: 12-15 kt for light aircraft).`);
+            if (data.gusts >= 20) threats.push(`⚠️ <strong>Wind Gust Hazard:</strong> Peak gusts recorded at ${data.gusts} kt.`);
+            if (data.densityAlt >= 1000) threats.push(`🌡️ <strong>High Density Altitude:</strong> ${data.densityAlt} ft. Expect longer takeoff roll and reduced climb rate.`);
+            if (data.temp >= 35) threats.push(`🔥 <strong>High Temperature Alert:</strong> ${Math.round(data.temp)}°C.`);
+            if (data.cloudBase < 1000) threats.push(`☁️ <strong>Low Cloud Ceiling:</strong> Estimated cloud base is ${data.cloudBase} ft AGL.`);
+
+            if (threats.length > 0) {
+                card.className = "glass-card p-4 border-l-4 border-[var(--warn-amber)]";
+                list.innerHTML = threats.map(t => `<div class="text-[var(--warn-amber)] font-medium">${t}</div>`).join('');
+                badge.innerText = "MARGINAL";
+                badge.className = "vfr-badge mvfr";
+            } else {
+                card.className = "glass-card p-4 border-l-4 border-[var(--vfr-green)]";
+                list.innerHTML = `<div class="text-[var(--vfr-green)] font-medium">✔ No active meteorological hazards or runway crosswind exceedances for LEAX.</div>`;
+                badge.innerText = "VFR";
+                badge.className = "vfr-badge";
+            }
+        }
+
+        // Windy Webcams API Integration Logic
+        async function fetchCameraData(lat, lon) {
+            const url = `https://api.windy.com/webcams/api/v3/webcams?nearby=${lat},${lon},25&include=images,location,urls`;
+            const response = await fetch(url, {
+                headers: {
+                    'X-WINDY-API-KEY': WINDY_API_KEY
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`API ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.webcams && data.webcams.length > 0) {
+                return data.webcams[0];
+            } else {
+                throw new Error('No camera found');
+            }
+        }
+
+        async function updateWebcamSlot(key, locationData) {
+            const container = document.getElementById(`container-${key}`);
+            const statusEl = document.getElementById(`status-${key}`);
+            const updateEl = document.getElementById(`update-${key}`);
+            const dayEl = document.getElementById(`status-day-${key}`);
+
+            try {
+                const cam = await fetchCameraData(locationData.lat, locationData.lon);
+                const imageUrl = cam.images?.current?.preview || cam.images?.sizes?.medium?.preview;
+
+                if (imageUrl) {
+                    const freshImageUrl = `${imageUrl}?t=${Date.now()}`;
+                    container.innerHTML = `<img src="${freshImageUrl}" alt="${cam.title}" class="w-full h-full object-cover">`;
+                    
+                    statusEl.textContent = 'ONLINE';
+                    statusEl.className = 'vfr-badge';
+                } else {
+                    throw new Error('Image feed offline');
+                }
+
+                const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                updateEl.textContent = `Last updated: ${now}`;
+                dayEl.textContent = `Status: ${cam.status || 'Active'}`;
+
+            } catch (err) {
+                console.error(`Failed loading camera for ${key}:`, err);
+                container.innerHTML = `<div class="p-4 text-center text-xs text-[var(--ifr-red)]">Unable to load feed<br>(${err.message})</div>`;
+                statusEl.textContent = 'OFFLINE';
+                statusEl.className = 'vfr-badge ifr';
+            }
+        }
+
+        function loadAllWebcams() {
+            updateWebcamSlot('torre', WEBCAM_LOCATIONS.torre);
+            updateWebcamSlot('vinuela', WEBCAM_LOCATIONS.vinuela);
+        }
+
+        function pad(n, width) {
+            n = n + '';
+            return n.length >= width ? n : new Array(width - n.length + 1).join('0') + n;
+        }
+
+        window.onload = function() {
+            refreshAllData();
+            // Automatically refresh webcams every 5 minutes
+            setInterval(loadAllWebcams, 300000);
+        };
+    </script>
+</body>
+</html>
